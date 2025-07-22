@@ -19,14 +19,13 @@
         }
         
         .container {
-            min-height: 100vh;
-            display: flex;
+            min-h-screen display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
         }
         
-        .menu {
+        .menu-container {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(20px);
             padding: 3rem;
@@ -60,11 +59,10 @@
             padding: 1.5rem;
             border-radius: 24px;
             border: 1px solid rgba(255, 255, 255, 0.2);
-            height: fit-content;
         }
         
         h1 {
-            font-size: 5rem;
+            font-size: 3.5rem;
             font-weight: bold;
             background: linear-gradient(45deg, #60a5fa, #a855f7);
             -webkit-background-clip: text;
@@ -116,6 +114,29 @@
             color: white;
         }
         
+        .btn-custom {
+            background: linear-gradient(45deg, #8b5cf6, #6366f1);
+            color: white;
+        }
+        
+        .btn-surrender {
+            background: linear-gradient(45deg, #ef4444, #dc2626);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            margin-left: 1rem;
+        }
+        
+        .btn-surrender:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+        
         .btn-reset {
             background: linear-gradient(45deg, #3b82f6, #8b5cf6);
             color: white;
@@ -125,6 +146,11 @@
             cursor: pointer;
             font-weight: 600;
             margin-top: 1rem;
+            transition: all 0.2s;
+        }
+        
+        .btn-reset:hover {
+            transform: scale(1.02);
         }
         
         .game-header {
@@ -132,6 +158,11 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1.5rem;
+        }
+        
+        .header-left {
+            display: flex;
+            align-items: center;
         }
         
         .game-title {
@@ -206,11 +237,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 3rem;
+            font-size: 5rem;
             cursor: pointer;
             transition: all 0.2s;
             position: relative;
             font-weight: bold;
+            line-height: 1;
         }
         
         .square.light {
@@ -254,25 +286,24 @@
             z-index: 10;
         }
         
-        /* Stili per i pezzi */
         .piece-white {
             color: #ffffff;
             text-shadow: 
-                -1px -1px 0 #000,
-                1px -1px 0 #000,
-                -1px 1px 0 #000,
-                1px 1px 0 #000,
-                0 0 8px rgba(0, 0, 0, 0.8);
+                -2px -2px 0 #000,
+                2px -2px 0 #000,
+                -2px 2px 0 #000,
+                2px 2px 0 #000,
+                0 0 12px rgba(0, 0, 0, 0.9);
         }
         
         .piece-black {
             color: #000000;
             text-shadow: 
-                -1px -1px 0 #fff,
-                1px -1px 0 #fff,
-                -1px 1px 0 #fff,
-                1px 1px 0 #fff,
-                0 0 8px rgba(255, 255, 255, 0.8);
+                -2px -2px 0 #fff,
+                2px -2px 0 #fff,
+                -2px 2px 0 #fff,
+                2px 2px 0 #fff,
+                0 0 12px rgba(255, 255, 255, 0.9);
         }
         
         @keyframes glow {
@@ -282,11 +313,6 @@
             50% { 
                 box-shadow: inset 0 0 0 4px #fbbf24, 0 0 20px rgba(251, 191, 36, 0.6);
             }
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.8; }
         }
         
         @keyframes bounce {
@@ -485,13 +511,28 @@
         .hidden {
             display: none;
         }
+        
+        .show-menu {
+            display: flex;
+            min-height: 100vh;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .show-game {
+            display: flex;
+            min-height: 100vh;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
     </style>
 </head>
 <body>
-    <div id="app"></div>
+    <div id="app" class="container"></div>
 
     <script>
-        // Costanti del gioco
+        // Costanti globali
         const PIECES = {
             PAWN: 'pawn',
             ROOK: 'rook', 
@@ -530,12 +571,13 @@
         };
 
         // Stato del gioco
-        let gameState = {
-            mode: 'menu', // 'menu', 'playing', 'gameOver'
+        let game = {
+            mode: 'menu',
             board: [],
             currentPlayer: 'white',
             winner: null,
             difficulty: 'medium',
+            customDepth: null,
             isAIThinking: false,
             aiThoughts: [],
             selectedPiece: null,
@@ -545,26 +587,18 @@
             animatingPieces: new Set(),
             moveHistory: [],
             isInCheck: false,
-            castlingRights: {
-                whiteKingSide: true,
-                whiteQueenSide: true,
-                blackKingSide: true,
-                blackQueenSide: true
-            },
             promotionDialog: null
         };
 
-        // Funzioni di utilità
+        // Funzioni di base
         function initializeBoard() {
             const board = Array(8).fill().map(() => Array(8).fill(null));
             
-            // Pedoni
             for (let col = 0; col < 8; col++) {
                 board[1][col] = { type: PIECES.PAWN, color: 'black' };
                 board[6][col] = { type: PIECES.PAWN, color: 'white' };
             }
             
-            // Pezzi
             const backRank = [PIECES.ROOK, PIECES.KNIGHT, PIECES.BISHOP, PIECES.QUEEN, PIECES.KING, PIECES.BISHOP, PIECES.KNIGHT, PIECES.ROOK];
             for (let col = 0; col < 8; col++) {
                 board[0][col] = { type: backRank[col], color: 'black' };
@@ -610,23 +644,21 @@
             return false;
         }
 
+        // Mosse dei pezzi
         function getPawnMoves(board, row, col, color) {
             const moves = [];
             const direction = color === 'white' ? -1 : 1;
             const startRow = color === 'white' ? 6 : 1;
             
-            // Movimento in avanti
             const newRow = row + direction;
             if (isValidPosition(newRow, col) && !board[newRow][col]) {
                 moves.push({ row: newRow, col });
                 
-                // Doppio movimento dalla posizione iniziale
                 if (row === startRow && !board[newRow + direction][col]) {
                     moves.push({ row: newRow + direction, col });
                 }
             }
             
-            // Catture diagonali
             for (const dc of [-1, 1]) {
                 const captureRow = row + direction;
                 const captureCol = col + dc;
@@ -717,7 +749,6 @@
             const moves = [];
             const directions = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
             
-            // Mosse normali
             for (const [dr, dc] of directions) {
                 const newRow = row + dr;
                 const newCol = col + dc;
@@ -729,30 +760,6 @@
                     }
                 }
             }
-            
-            // Arrocco
-            const kingRow = color === 'white' ? 7 : 0;
-            
-            if (row === kingRow && col === 4) {
-                // Arrocco corto
-                if (gameState.castlingRights[color === 'white' ? 'whiteKingSide' : 'blackKingSide']) {
-                    if (!board[kingRow][5] && !board[kingRow][6] && 
-                        board[kingRow][7] && board[kingRow][7].type === PIECES.ROOK && 
-                        board[kingRow][7].color === color) {
-                        moves.push({ row: kingRow, col: 6, isCastling: true, castlingType: 'kingside' });
-                    }
-                }
-                
-                // Arrocco lungo
-                if (gameState.castlingRights[color === 'white' ? 'whiteQueenSide' : 'blackQueenSide']) {
-                    if (!board[kingRow][1] && !board[kingRow][2] && !board[kingRow][3] && 
-                        board[kingRow][0] && board[kingRow][0].type === PIECES.ROOK && 
-                        board[kingRow][0].color === color) {
-                        moves.push({ row: kingRow, col: 2, isCastling: true, castlingType: 'queenside' });
-                    }
-                }
-            }
-            
             return moves;
         }
 
@@ -805,25 +812,9 @@
             const piece = newBoard[fromRow][fromCol];
             const capturedPiece = newBoard[toRow][toCol];
             
-            // Mossa base
             newBoard[toRow][toCol] = piece;
             newBoard[fromRow][fromCol] = null;
             
-            // Arrocco
-            if (moveInfo && moveInfo.isCastling) {
-                const rookRow = toRow;
-                if (moveInfo.castlingType === 'kingside') {
-                    const rook = newBoard[rookRow][7];
-                    newBoard[rookRow][5] = rook;
-                    newBoard[rookRow][7] = null;
-                } else if (moveInfo.castlingType === 'queenside') {
-                    const rook = newBoard[rookRow][0];
-                    newBoard[rookRow][3] = rook;
-                    newBoard[rookRow][0] = null;
-                }
-            }
-            
-            // Promozione
             if (piece.type === PIECES.PAWN) {
                 const promotionRow = piece.color === 'white' ? 0 : 7;
                 if (toRow === promotionRow) {
@@ -832,30 +823,7 @@
                 }
             }
             
-            // Aggiorna diritti di arrocco
-            const newCastlingRights = { ...gameState.castlingRights };
-            
-            if (piece.type === PIECES.KING) {
-                if (piece.color === 'white') {
-                    newCastlingRights.whiteKingSide = false;
-                    newCastlingRights.whiteQueenSide = false;
-                } else {
-                    newCastlingRights.blackKingSide = false;
-                    newCastlingRights.blackQueenSide = false;
-                }
-            }
-            
-            if (piece.type === PIECES.ROOK) {
-                if (piece.color === 'white') {
-                    if (fromRow === 7 && fromCol === 0) newCastlingRights.whiteQueenSide = false;
-                    if (fromRow === 7 && fromCol === 7) newCastlingRights.whiteKingSide = false;
-                } else {
-                    if (fromRow === 0 && fromCol === 0) newCastlingRights.blackQueenSide = false;
-                    if (fromRow === 0 && fromCol === 7) newCastlingRights.blackKingSide = false;
-                }
-            }
-            
-            return { newBoard, capturedPiece, newCastlingRights };
+            return { newBoard, capturedPiece };
         }
 
         function getAllValidMoves(board, color) {
@@ -872,9 +840,7 @@
                                 fromCol: col,
                                 toRow: move.row,
                                 toCol: move.col,
-                                piece,
-                                isCastling: move.isCastling,
-                                castlingType: move.castlingType
+                                piece
                             });
                         }
                     }
@@ -883,6 +849,7 @@
             return moves;
         }
 
+        // IA
         function evaluatePosition(board) {
             let score = 0;
             
@@ -892,17 +859,6 @@
                     if (piece) {
                         let pieceValue = PIECE_VALUES[piece.type];
                         
-                        if (piece.type === PIECES.PAWN) {
-                            if (piece.color === 'white') {
-                                pieceValue += (6 - row) * 10;
-                            } else {
-                                pieceValue += (row - 1) * 10;
-                            }
-                        }
-                        
-                        const centerDistance = Math.abs(3.5 - row) + Math.abs(3.5 - col);
-                        pieceValue += (7 - centerDistance) * 5;
-                        
                         if (piece.color === 'black') {
                             score += pieceValue;
                         } else {
@@ -911,9 +867,6 @@
                     }
                 }
             }
-            
-            if (isKingInCheck(board, 'black')) score -= 500;
-            if (isKingInCheck(board, 'white')) score += 500;
             
             return score;
         }
@@ -986,24 +939,26 @@
             return null;
         }
 
-        // Eventi del gioco
+        // Event handlers
         function handleSquareClick(row, col) {
-            if (gameState.mode !== 'playing' || gameState.currentPlayer !== 'white' || gameState.isAIThinking) return;
+            if (game.mode !== 'playing' || game.currentPlayer !== 'white' || game.isAIThinking) {
+                return;
+            }
             
-            const piece = gameState.board[row][col];
+            const piece = game.board[row][col];
             
-            if (gameState.selectedPiece) {
-                const validMove = gameState.validMoves.find(m => m.row === row && m.col === col);
+            if (game.selectedPiece) {
+                const validMove = game.validMoves.find(m => m.row === row && m.col === col);
                 
                 if (validMove) {
-                    const movingPiece = gameState.board[gameState.selectedPiece.row][gameState.selectedPiece.col];
+                    const movingPiece = game.board[game.selectedPiece.row][game.selectedPiece.col];
                     const isPromotion = movingPiece && movingPiece.type === PIECES.PAWN && 
                                        movingPiece.color === 'white' && row === 0;
                     
                     if (isPromotion) {
-                        gameState.promotionDialog = {
-                            fromRow: gameState.selectedPiece.row,
-                            fromCol: gameState.selectedPiece.col,
+                        game.promotionDialog = {
+                            fromRow: game.selectedPiece.row,
+                            fromCol: game.selectedPiece.col,
                             toRow: row,
                             toCol: col,
                             validMove
@@ -1012,7 +967,7 @@
                         return;
                     }
                     
-                    makeMove(gameState.selectedPiece.row, gameState.selectedPiece.col, row, col, validMove);
+                    makeMove(game.selectedPiece.row, game.selectedPiece.col, row, col, validMove);
                 } else {
                     selectPiece(row, col, piece);
                 }
@@ -1022,178 +977,179 @@
         }
 
         function selectPiece(row, col, piece) {
-            if (!piece || piece.color !== gameState.currentPlayer) {
-                gameState.selectedPiece = null;
-                gameState.validMoves = [];
+            if (!piece || piece.color !== game.currentPlayer) {
+                game.selectedPiece = null;
+                game.validMoves = [];
                 updateDisplay();
                 return;
             }
             
-            const moves = getPieceMoves(gameState.board, row, col, piece);
-            gameState.selectedPiece = { row, col };
-            gameState.validMoves = moves;
+            const moves = getPieceMoves(game.board, row, col, piece);
+            game.selectedPiece = { row, col };
+            game.validMoves = moves;
             updateDisplay();
         }
 
         function makeMove(fromRow, fromCol, toRow, toCol, moveInfo, promotionPiece = null) {
             const moveInfoWithPromotion = promotionPiece ? { ...moveInfo, promotionPiece } : moveInfo;
             
-            const { newBoard, capturedPiece, newCastlingRights } = executeMove(
-                gameState.board, fromRow, fromCol, toRow, toCol, moveInfoWithPromotion
+            const { newBoard, capturedPiece } = executeMove(
+                game.board, fromRow, fromCol, toRow, toCol, moveInfoWithPromotion
             );
             
             const pieceId = `${fromRow}-${fromCol}`;
-            gameState.animatingPieces.add(pieceId);
+            game.animatingPieces.add(pieceId);
             
-            gameState.board = newBoard;
-            gameState.lastMove = { from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol } };
-            gameState.castlingRights = newCastlingRights;
+            game.board = newBoard;
+            game.lastMove = { from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol } };
             
             if (capturedPiece) {
-                if (gameState.currentPlayer === 'white') {
-                    gameState.capturedPieces.black.push(capturedPiece);
+                if (game.currentPlayer === 'white') {
+                    game.capturedPieces.black.push(capturedPiece);
                 } else {
-                    gameState.capturedPieces.white.push(capturedPiece);
+                    game.capturedPieces.white.push(capturedPiece);
                 }
             }
             
             setTimeout(() => {
-                gameState.animatingPieces.delete(pieceId);
+                game.animatingPieces.delete(pieceId);
                 updateDisplay();
             }, 300);
             
-            const nextPlayer = gameState.currentPlayer === 'white' ? 'black' : 'white';
-            gameState.isInCheck = isKingInCheck(newBoard, nextPlayer);
+            const nextPlayer = game.currentPlayer === 'white' ? 'black' : 'white';
+            game.isInCheck = isKingInCheck(newBoard, nextPlayer);
             
             const gameEnd = checkGameEnd(newBoard, nextPlayer);
             if (gameEnd) {
-                gameState.winner = gameEnd;
-                gameState.mode = 'gameOver';
+                game.winner = gameEnd;
+                game.mode = 'gameOver';
             } else {
-                gameState.currentPlayer = nextPlayer;
+                game.currentPlayer = nextPlayer;
             }
             
-            gameState.selectedPiece = null;
-            gameState.validMoves = [];
-            gameState.promotionDialog = null;
+            game.selectedPiece = null;
+            game.validMoves = [];
+            game.promotionDialog = null;
             
             updateDisplay();
             
-            // IA move
-            if (gameState.currentPlayer === 'black' && gameState.mode === 'playing') {
+            if (game.currentPlayer === 'black' && game.mode === 'playing') {
                 setTimeout(makeAIMove, 500);
             }
         }
 
         async function makeAIMove() {
-            gameState.isAIThinking = true;
-            gameState.aiThoughts = [];
+            game.isAIThinking = true;
+            game.aiThoughts = [];
             updateDisplay();
 
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            try {
-                gameState.aiThoughts.push({
-                    text: "Analizzando tutte le mosse possibili...",
-                    round: Math.floor(gameState.moveHistory.length / 2)
-                });
-                updateDisplay();
+            game.aiThoughts.push({
+                text: "Analizzando tutte le mosse possibili...",
+                round: Math.floor(game.moveHistory.length / 2)
+            });
+            updateDisplay();
 
-                await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 300));
 
-                let searchDepth;
-                switch (gameState.difficulty) {
+            let searchDepth;
+            if (game.difficulty === 'custom') {
+                searchDepth = game.customDepth;
+            } else {
+                switch (game.difficulty) {
                     case 'easy': searchDepth = 2; break;
                     case 'medium': searchDepth = 4; break;
                     case 'hard': searchDepth = 6; break;
                     default: searchDepth = 4;
                 }
+            }
 
-                gameState.aiThoughts.push({
-                    text: `Analisi a ${searchDepth} livelli di profondità...`,
-                    round: Math.floor(gameState.moveHistory.length / 2)
+            game.aiThoughts.push({
+                text: `Analisi a ${searchDepth} livelli di profondità...`,
+                round: Math.floor(game.moveHistory.length / 2)
+            });
+            updateDisplay();
+
+            const startTime = Date.now();
+            const bestMove = findBestMove(game.board, searchDepth);
+            const endTime = Date.now();
+
+            if (!bestMove) {
+                game.winner = 'white';
+                game.mode = 'gameOver';
+                updateDisplay();
+                return;
+            }
+
+            game.aiThoughts.push({
+                text: `Mossa trovata in ${((endTime - startTime) / 1000).toFixed(1)}s`,
+                round: Math.floor(game.moveHistory.length / 2)
+            });
+            updateDisplay();
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol, 
+                    { ...bestMove, promotionPiece: PIECES.QUEEN });
+
+            game.isAIThinking = false;
+            updateDisplay();
+        }
+
+        function surrenderGame() {
+            if (game.mode !== 'playing') return;
+            
+            if (confirm('Sei sicuro di voler abbandonare la partita?')) {
+                game.winner = 'black';
+                game.mode = 'gameOver';
+                game.aiThoughts.push({
+                    text: "Il giocatore ha abbandonato la partita! L'IA vince!",
+                    round: Math.floor(game.moveHistory.length / 2)
                 });
-                updateDisplay();
-
-                const startTime = Date.now();
-                const bestMove = findBestMove(gameState.board, searchDepth);
-                const endTime = Date.now();
-
-                if (!bestMove) {
-                    gameState.winner = 'white';
-                    gameState.mode = 'gameOver';
-                    updateDisplay();
-                    return;
-                }
-
-                gameState.aiThoughts.push({
-                    text: `Mossa trovata in ${((endTime - startTime) / 1000).toFixed(1)}s`,
-                    round: Math.floor(gameState.moveHistory.length / 2)
-                });
-                updateDisplay();
-
-                await new Promise(resolve => setTimeout(resolve, 300));
-
-                makeMove(bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol, 
-                        { ...bestMove, promotionPiece: PIECES.QUEEN });
-
-            } catch (error) {
-                console.error('AI Error:', error);
-                gameState.currentPlayer = 'white';
-                updateDisplay();
-            } finally {
-                gameState.isAIThinking = false;
                 updateDisplay();
             }
         }
 
         function executePromotionMove(pieceType) {
-            const dialog = gameState.promotionDialog;
+            if (!game.promotionDialog) return;
+            
+            const dialog = game.promotionDialog;
             makeMove(dialog.fromRow, dialog.fromCol, dialog.toRow, dialog.toCol, dialog.validMove, pieceType);
         }
 
-        function startGame(difficulty) {
-            gameState.difficulty = difficulty;
-            gameState.mode = 'playing';
-            gameState.board = initializeBoard();
-            gameState.currentPlayer = 'white';
-            gameState.winner = null;
-            gameState.aiThoughts = [];
-            gameState.selectedPiece = null;
-            gameState.validMoves = [];
-            gameState.capturedPieces = { white: [], black: [] };
-            gameState.lastMove = null;
-            gameState.moveHistory = [];
-            gameState.isInCheck = false;
-            gameState.promotionDialog = null;
-            gameState.castlingRights = {
-                whiteKingSide: true,
-                whiteQueenSide: true,
-                blackKingSide: true,
-                blackQueenSide: true
-            };
+        function startGame(difficulty, customDepth = null) {
+            game.difficulty = difficulty;
+            game.customDepth = customDepth;
+            game.mode = 'playing';
+            game.board = initializeBoard();
+            game.currentPlayer = 'white';
+            game.winner = null;
+            game.aiThoughts = [];
+            game.selectedPiece = null;
+            game.validMoves = [];
+            game.capturedPieces = { white: [], black: [] };
+            game.lastMove = null;
+            game.moveHistory = [];
+            game.isInCheck = false;
+            game.promotionDialog = null;
             updateDisplay();
         }
 
+        function showAdvancedSettings() {
+            const depth = prompt('Inserisci il numero di livelli di profondità per l\'IA (2-10):', '8');
+            if (depth && !isNaN(depth)) {
+                const depthNum = parseInt(depth);
+                if (depthNum >= 2 && depthNum <= 10) {
+                    startGame('custom', depthNum);
+                } else {
+                    alert('Inserisci un numero tra 2 e 10');
+                }
+            }
+        }
+
         function resetGame() {
-            gameState.mode = 'menu';
-            gameState.board = [];
-            gameState.currentPlayer = 'white';
-            gameState.winner = null;
-            gameState.aiThoughts = [];
-            gameState.selectedPiece = null;
-            gameState.validMoves = [];
-            gameState.capturedPieces = { white: [], black: [] };
-            gameState.lastMove = null;
-            gameState.moveHistory = [];
-            gameState.isInCheck = false;
-            gameState.promotionDialog = null;
-            gameState.castlingRights = {
-                whiteKingSide: true,
-                whiteQueenSide: true,
-                blackKingSide: true,
-                blackQueenSide: true
-            };
+            game.mode = 'menu';
             updateDisplay();
         }
 
@@ -1201,125 +1157,134 @@
         function updateDisplay() {
             const app = document.getElementById('app');
             
-            if (gameState.mode === 'menu') {
+            if (game.mode === 'menu') {
+                app.className = 'container show-menu';
                 app.innerHTML = `
-                    <div class="container">
-                        <div class="menu">
-                            <h1>Scacchi</h1>
-                            <p class="subtitle">by Dr. F.Marinuzzi</p>
-                            <div>
-                                <h2 class="difficulty-title">Seleziona Difficoltà</h2>
-                                <button class="btn btn-easy" onclick="startGame('easy')">
-                                    <span>Facile</span>
-                                    <span>→</span>
-                                </button>
-                                <button class="btn btn-medium" onclick="startGame('medium')">
-                                    <span>Medio</span>
-                                    <span>→</span>
-                                </button>
-                                <button class="btn btn-hard" onclick="startGame('hard')">
-                                    <span>Difficile</span>
-                                    <span>→</span>
-                                </button>
-                            </div>
+                    <div class="menu-container">
+                        <h1>Scacchi</h1>
+                        <p class="subtitle">by Dr. F.Marinuzzi</p>
+                        <div>
+                            <h2 class="difficulty-title">Seleziona Difficoltà</h2>
+                            <button class="btn btn-easy" onclick="startGame('easy')">
+                                <span>Facile</span>
+                                <span>→</span>
+                            </button>
+                            <button class="btn btn-medium" onclick="startGame('medium')">
+                                <span>Medio</span>
+                                <span>→</span>
+                            </button>
+                            <button class="btn btn-hard" onclick="startGame('hard')">
+                                <span>Difficile</span>
+                                <span>→</span>
+                            </button>
+                            <button class="btn btn-custom" onclick="showAdvancedSettings()">
+                                <span>Personalizzato</span>
+                                <span>⚙️</span>
+                            </button>
                         </div>
                     </div>
                 `;
             } else {
+                app.className = 'container show-game';
                 app.innerHTML = `
-                    <div class="container">
-                        <div class="game-container">
-                            <div class="board-section">
-                                <div class="game-header">
+                    <div class="game-container">
+                        <div class="board-section">
+                            <div class="game-header">
+                                <div class="header-left">
                                     <h1 class="game-title">Scacchi</h1>
-                                    <div class="players">
-                                        <div class="player player-white ${gameState.currentPlayer === 'white' ? 'active' : 'inactive'}">
-                                            👤 Il Tuo Turno
-                                        </div>
-                                        <div class="player player-black ${gameState.currentPlayer === 'black' ? 'active' : 'inactive'}">
-                                            🤖 Turno IA
-                                        </div>
-                                    </div>
-                                </div>
-
-                                ${gameState.isInCheck ? '<div class="check-alert">Scacco!</div>' : ''}
-
-                                <div class="board">
-                                    <div class="board-grid">
-                                        ${renderBoard()}
-                                    </div>
-                                </div>
-
-                                <div class="captured-pieces">
-                                    <div class="captured-section">
-                                        <div class="captured-title" style="color: #93c5fd;">Pezzi Bianchi Catturati: ${gameState.capturedPieces.white.length}</div>
-                                        <div class="captured-list">
-                                            ${gameState.capturedPieces.white.map(piece => 
-                                                `<span class="captured-piece">${PIECE_SYMBOLS[piece.color][piece.type]}</span>`
-                                            ).join('')}
-                                        </div>
-                                    </div>
-                                    <div class="captured-section">
-                                        <div class="captured-title" style="color: #d1d5db;">Pezzi Neri Catturati: ${gameState.capturedPieces.black.length}</div>
-                                        <div class="captured-list">
-                                            ${gameState.capturedPieces.black.map(piece => 
-                                                `<span class="captured-piece">${PIECE_SYMBOLS[piece.color][piece.type]}</span>`
-                                            ).join('')}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                ${gameState.mode === 'gameOver' ? `
-                                    <div class="game-over">
-                                        <div class="game-over-title">
-                                            ${gameState.winner === 'draw' ? 
-                                                '<span class="draw-text">È un Pareggio!</span>' : 
-                                                gameState.winner === 'white' ? 
-                                                    '<span class="win-text">Hai Vinto!</span>' : 
-                                                    '<span class="lose-text">L\'IA Ha Vinto!</span>'
-                                            }
-                                        </div>
-                                        <button class="btn-reset" onclick="resetGame()">
-                                            🔄 Gioca Ancora
+                                    ${game.mode === 'playing' ? `
+                                        <button class="btn-surrender" onclick="surrenderGame()">
+                                            🏳️ Abbandona
                                         </button>
+                                    ` : ''}
+                                </div>
+                                <div class="players">
+                                    <div class="player player-white ${game.currentPlayer === 'white' ? 'active' : 'inactive'}">
+                                        👤 Il Tuo Turno
                                     </div>
-                                ` : ''}
+                                    <div class="player player-black ${game.currentPlayer === 'black' ? 'active' : 'inactive'}">
+                                        🤖 Turno IA
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="ai-section">
-                                <div class="ai-header">
-                                    <span>✨</span>
-                                    <span class="ai-title">Pensieri IA</span>
-                                    <span class="difficulty-badge">${gameState.difficulty}</span>
+                            ${game.isInCheck ? '<div class="check-alert">Scacco!</div>' : ''}
+
+                            <div class="board">
+                                <div class="board-grid">
+                                    ${renderBoard()}
                                 </div>
+                            </div>
+
+                            <div class="captured-pieces">
+                                <div class="captured-section">
+                                    <div class="captured-title" style="color: #93c5fd;">Pezzi Bianchi Catturati: ${game.capturedPieces.white.length}</div>
+                                    <div class="captured-list">
+                                        ${game.capturedPieces.white.map(piece => 
+                                            `<span class="captured-piece">${PIECE_SYMBOLS[piece.color][piece.type]}</span>`
+                                        ).join('')}
+                                    </div>
+                                </div>
+                                <div class="captured-section">
+                                    <div class="captured-title" style="color: #d1d5db;">Pezzi Neri Catturati: ${game.capturedPieces.black.length}</div>
+                                    <div class="captured-list">
+                                        ${game.capturedPieces.black.map(piece => 
+                                            `<span class="captured-piece">${PIECE_SYMBOLS[piece.color][piece.type]}</span>`
+                                        ).join('')}
+                                    </div>
+                                </div>
+                            </div>
+
+                            ${game.mode === 'gameOver' ? `
+                                <div class="game-over">
+                                    <div class="game-over-title">
+                                        ${game.winner === 'draw' ? 
+                                            '<span class="draw-text">È un Pareggio!</span>' : 
+                                            game.winner === 'white' ? 
+                                                '<span class="win-text">Hai Vinto!</span>' : 
+                                                '<span class="lose-text">L\'IA Ha Vinto!</span>'
+                                        }
+                                    </div>
+                                    <button class="btn-reset" onclick="resetGame()">
+                                        🔄 Gioca Ancora
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="ai-section">
+                            <div class="ai-header">
+                                <span>✨</span>
+                                <span class="ai-title">Pensieri IA</span>
+                                <span class="difficulty-badge">${game.difficulty === 'custom' ? `Personalizzato (${game.customDepth})` : game.difficulty}</span>
+                            </div>
+                            
+                            <div class="ai-thoughts">
+                                ${game.isAIThinking ? `
+                                    <div class="ai-thinking">
+                                        <div class="thinking-text">Analizzando la scacchiera...</div>
+                                        <div class="progress-bar">
+                                            <div class="progress-fill" style="width: 100%"></div>
+                                        </div>
+                                        <div class="progress-label">Analisi in corso...</div>
+                                    </div>
+                                ` : ''}
                                 
-                                <div class="ai-thoughts">
-                                    ${gameState.isAIThinking ? `
-                                        <div class="ai-thinking">
-                                            <div class="thinking-text">Analizzando la scacchiera...</div>
-                                            <div class="progress-bar">
-                                                <div class="progress-fill" style="width: 100%"></div>
-                                            </div>
-                                            <div class="progress-label">Analisi in corso...</div>
-                                        </div>
-                                    ` : ''}
-                                    
-                                    ${gameState.aiThoughts.slice().reverse().map((thought, index) => `
-                                        <div class="thought" style="opacity: ${index === 0 ? 1 : 0.7 - index * 0.1}">
-                                            <div class="thought-text">${thought.text}</div>
-                                            <div class="thought-meta">Mossa ${thought.round}</div>
-                                        </div>
-                                    `).join('')}
-                                    
-                                    ${gameState.aiThoughts.length === 0 && !gameState.isAIThinking ? 
-                                        '<div class="no-thoughts">I pensieri dell\'IA appariranno qui...</div>' : ''
-                                    }
-                                </div>
+                                ${game.aiThoughts.slice().reverse().map((thought, index) => `
+                                    <div class="thought" style="opacity: ${index === 0 ? 1 : 0.7 - index * 0.1}">
+                                        <div class="thought-text">${thought.text}</div>
+                                        <div class="thought-meta">Mossa ${thought.round}</div>
+                                    </div>
+                                `).join('')}
+                                
+                                ${game.aiThoughts.length === 0 && !game.isAIThinking ? 
+                                    '<div class="no-thoughts">I pensieri dell\'IA appariranno qui...</div>' : ''
+                                }
                             </div>
                         </div>
                     </div>
 
-                    ${gameState.promotionDialog ? `
+                    ${game.promotionDialog ? `
                         <div class="promotion-dialog">
                             <div class="promotion-content">
                                 <div class="promotion-title">Scegli il pezzo di promozione</div>
@@ -1343,12 +1308,12 @@
             for (let row = 0; row < 8; row++) {
                 for (let col = 0; col < 8; col++) {
                     const isBlackSquare = (row + col) % 2 === 1;
-                    const isSelected = gameState.selectedPiece?.row === row && gameState.selectedPiece?.col === col;
-                    const isValidMove = gameState.validMoves.some(m => m.row === row && m.col === col);
-                    const isLastMoveFrom = gameState.lastMove?.from.row === row && gameState.lastMove?.from.col === col;
-                    const isLastMoveTo = gameState.lastMove?.to.row === row && gameState.lastMove?.to.col === col;
-                    const isAnimating = gameState.animatingPieces.has(`${row}-${col}`);
-                    const piece = gameState.board[row][col];
+                    const isSelected = game.selectedPiece?.row === row && game.selectedPiece?.col === col;
+                    const isValidMove = game.validMoves.some(m => m.row === row && m.col === col);
+                    const isLastMoveFrom = game.lastMove?.from.row === row && game.lastMove?.from.col === col;
+                    const isLastMoveTo = game.lastMove?.to.row === row && game.lastMove?.to.col === col;
+                    const isAnimating = game.animatingPieces.has(`${row}-${col}`);
+                    const piece = game.board[row][col];
                     
                     let classes = ['square'];
                     classes.push(isBlackSquare ? 'dark' : 'light');
@@ -1374,8 +1339,10 @@
             return html;
         }
 
-        // Avvio
-        updateDisplay();
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateDisplay();
+        });
     </script>
 </body>
 </html>
