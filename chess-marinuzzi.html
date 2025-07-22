@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scacchi by Dr. F. Marinuzzi</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { ChevronRight, Sparkles, Cpu, User, RotateCcw } = lucideReact;
+
+        const TRANSLATIONS = {
+          "it-IT": {
+            "gameTitle": "Scacchi",
+            "gameSubtitle": "by Dr. F.Marinuzzi",
+            "selectDifficulty": "Seleziona Difficoltà",
+            "easy": "Facile",
+            "medium": "Medio",
+            "hard": "Difficile", 
+            "yourTurn": "Il Tuo Turno",
+            "aiTurn": "Turno IA",
+            "itsADraw": "È un Pareggio!",
+            "youWin": "Hai Vinto!",
+            "aiWins": "L'IA Ha Vinto!",
+            "playAgain": "Gioca Ancora",
+            "aiThoughts": "Pensieri IA",
+            "analyzingBoard": "Analizzando la scacchiera...",
+            "aiThoughtsPlaceholder": "I pensieri dell'IA appariranno qui...",
+            "move": "Mossa",
+            "check": "Scacco!"
+          }
+        };
+
+        const locale = 'it-IT';
+        const t = (key) => TRANSLATIONS[locale]?.[key] || key;
+
+        const PIECES = {
+          PAWN: 'pawn',
+          ROOK: 'rook', 
+          KNIGHT: 'knight',
+          BISHOP: 'bishop',
+          QUEEN: 'queen',
+          KING: 'king'
+        };
+
+        const PIECE_VALUES = {
+          [PIECES.PAWN]: 100,
+          [PIECES.ROOK]: 500,
+          [PIECES.KNIGHT]: 300,
+          [PIECES.BISHOP]: 300,
+          [PIECES.QUEEN]: 900,
+          [PIECES.KING]: 10000
+        };
+
+        const PIECE_SYMBOLS = {
+          white: {
+            [PIECES.PAWN]: '♙',
+            [PIECES.ROOK]: '♖',
+            [PIECES.KNIGHT]: '♘',
+            [PIECES.BISHOP]: '♗',
+            [PIECES.QUEEN]: '♕',
+            [PIECES.KING]: '♔'
+          },
+          black: {
+            [PIECES.PAWN]: '♟',
+            [PIECES.ROOK]: '♜',
+            [PIECES.KNIGHT]: '♞',
+            [PIECES.BISHOP]: '♝',
+            [PIECES.QUEEN]: '♛',
+            [PIECES.KING]: '♚'
+          }
+        };
+
+        const Scacchi = () => {
+          const [gameState, setGameState] = useState('menu');
+          const [board, setBoard] = useState([]);
+          const [currentPlayer, setCurrentPlayer] = useState('white');
+          const [winner, setWinner] = useState(null);
+          const [difficulty, setDifficulty] = useState('medium');
+          const [isAIThinking, setIsAIThinking] = useState(false);
+          const [aiThoughts, setAiThoughts] = useState([]);
+          const [selectedPiece, setSelectedPiece] = useState(null);
+          const [validMoves, setValidMoves] = useState([]);
+          const [capturedPieces, setCapturedPieces] = useState({ white: [], black: [] });
+          const [lastMove, setLastMove] = useState(null);
+          const [animatingPieces, setAnimatingPieces] = useState(new Set());
+          const [moveHistory, setMoveHistory] = useState([]);
+          const [isInCheck, setIsInCheck] = useState(false);
+          const [castlingRights, setCastlingRights] = useState({
+            whiteKingSide: true,
+            whiteQueenSide: true,
+            blackKingSide: true,
+            blackQueenSide: true
+          });
+          const [enPassantTarget, setEnPassantTarget] = useState(null);
+          const [promotionDialog, setPromotionDialog] = useState(null);
+
+          const initializeBoard = () => {
+            const newBoard = Array(8).fill().map(() => Array(8).fill(null));
+            
+            for (let col = 0; col < 8; col++) {
+              newBoard[1][col] = { type: PIECES.PAWN, color: 'black' };
+              newBoard[6][col] = { type: PIECES.PAWN, color: 'white' };
+            }
+            
+            const backRank = [PIECES.ROOK, PIECES.KNIGHT, PIECES.BISHOP, PIECES.QUEEN, PIECES.KING, PIECES.BISHOP, PIECES.KNIGHT, PIECES.ROOK];
+            for (let col = 0; col < 8; col++) {
+              newBoard[0][col] = { type: backRank[col], color: 'black' };
+              newBoard[7][col] = { type: backRank[col], color: 'white' };
+            }
+            
+            return newBoard;
+          };
+
+          const isValidPosition = (row, col) => row >= 0 && row < 8 && col >= 0 && col < 8;
+
+          const findKing = (board, color) => {
+            for (let row = 0; row < 8; row++) {
+              for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (piece && piece.type === PIECES.KING && piece.color === color) {
+                  return { row, col };
+                }
+              }
+            }
+            return null;
+          };
+
+          const isKingInCheck = (board, color) => {
+            const kingPos = findKing(board, color);
+            if (!kingPos) return false;
+            
+            const enemyColor = color === 'white' ? 'black' : 'white';
+            
+            for (let row = 0; row < 8; row++) {
+              for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (piece && piece.color === enemyColor) {
+                  const moves = getPieceMoves(board, row, col, piece, false);
+                  if (moves.some(move => move.row === kingPos.row && move.col === kingPos.col)) {
+                    return true;
+                  }
+                }
+              }
+            }
+            return false;
+          };
+
+          const getPawnMoves = (board, row, col, color) => {
+            const moves = [];
+            const direction = color === 'white' ? -1 : 1;
+            const startRow = color === 'white' ? 6 : 1;
+            
+            const newRow = row + direction;
+            if (isValidPosition(newRow, col) && !board[newRow][col]) {
+              moves.push({ row: newRow, col });
+              
+              if (row === startRow && !board[newRow + direction][col]) {
+                moves.push({ row: newRow + direction, col });
+              }
+            }
+            
+            for (const dc of [-1, 1]) {
+              const captureRow = row + direction;
+              const captureCol = col + dc;
+              if (isValidPosition(captureRow, captureCol)) {
+                const target = board[captureRow][captureCol];
+                if (target && target.color !== color) {
+                  moves.push({ row: captureRow, col: captureCol });
+                }
+              }
+            }
+            
+            return moves;
+          };
+
+          const getRookMoves = (board, row, col, color) => {
+            const moves = [];
+            const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+            
+            for (const [dr, dc] of directions) {
+              for (let i = 1; i < 8; i++) {
+                const newRow = row + dr * i;
+                const newCol = col + dc * i;
+                
+                if (!isValidPosition(newRow, newCol)) break;
+                
+                const target = board[newRow][newCol];
+                if (!target) {
+                  moves.push({ row: newRow, col: newCol });
+                } else {
+                  if (target.color !== color) {
+                    moves.push({ row: newRow, col: newCol });
+                  }
+                  break;
+                }
+              }
+            }
+            return moves;
+          };
+
+          const getKnightMoves = (board, row, col, color) => {
+            const moves = [];
+            const knightMoves = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
+            
+            for (const [dr, dc] of knightMoves) {
+              const newRow = row + dr;
+              const newCol = col + dc;
+              
+              if (isValidPosition(newRow, newCol)) {
+                const target = board[newRow][newCol];
+                if (!target || target.color !== color) {
+                  moves.push({ row: newRow, col: newCol });
+                }
+              }
+            }
+            return moves;
+          };
+
+          const getBishopMoves = (board, row, col, color) => {
+            const moves = [];
+            const directions = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+            
+            for (const [dr, dc] of directions) {
+              for (let i = 1; i < 8; i++) {
+                const newRow = row + dr * i;
+                const newCol = col + dc * i;
+                
+                if (!isValidPosition(newRow, newCol)) break;
+                
+                const target = board[newRow][newCol];
+                if (!target) {
+                  moves.push({ row: newRow, col: newCol });
+                } else {
+                  if (target.color !== color) {
+                    moves.push({ row: newRow, col: newCol });
+                  }
+                  break;
+                }
+              }
+            }
+            return moves;
+          };
+
+          const getQueenMoves = (board, row, col, color) => {
+            return [...getRookMoves(board, row, col, color), ...getBishopMoves(board, row, col, color)];
+          };
+
+          const getKingMoves = (board, row, col, color) => {
+            const moves = [];
+            const directions = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+            
+            for (const [dr, dc] of directions) {
+              const newRow = row + dr;
+              const newCol = col + dc;
+              
+              if (isValidPosition(newRow, newCol)) {
+                const target = board[newRow][newCol];
+                if (!target || target.color !== color) {
+                  moves.push({ row: newRow, col: newCol });
+                }
+              }
+            }
+            
+            const kingRow = color === 'white' ? 7 : 0;
+            
+            if (row === kingRow && col === 4) {
+              if (castlingRights[color === 'white' ? 'whiteKingSide' : 'blackKingSide']) {
+                if (!board[kingRow][5] && !board[kingRow][6] && 
+                    board[kingRow][7] && board[kingRow][7].type === PIECES.ROOK && 
+                    board[kingRow][7].color === color) {
+                  moves.push({ row: kingRow, col: 6, isCastling: true, castlingType: 'kingside' });
+                }
+              }
+              
+              if (castlingRights[color === 'white' ? 'whiteQueenSide' : 'blackQueenSide']) {
+                if (!board[kingRow][1] && !board[kingRow][2] && !board[kingRow][3] && 
+                    board[kingRow][0] && board[kingRow][0].type === PIECES.ROOK && 
+                    board[kingRow][0].color === color) {
+                  moves.push({ row: kingRow, col: 2, isCastling: true, castlingType: 'queenside' });
+                }
+              }
+            }
+            
+            return moves;
+          };
+
+          const simulateMove = (board, fromRow, fromCol, toRow, toCol) => {
+            const newBoard = board.map(row => [...row]);
+            const piece = newBoard[fromRow][fromCol];
+            newBoard[toRow][toCol] = piece;
+            newBoard[fromRow][fromCol] = null;
+            return newBoard;
+          };
+
+          const getPieceMoves = (board, row, col, piece, checkForCheck = true) => {
+            if (!piece) return [];
+            
+            let moves = [];
+            
+            switch (piece.type) {
+              case PIECES.PAWN:
+                moves = getPawnMoves(board, row, col, piece.color);
+                break;
+              case PIECES.ROOK:
+                moves = getRookMoves(board, row, col, piece.color);
+                break;
+              case PIECES.KNIGHT:
+                moves = getKnightMoves(board, row, col, piece.color);
+                break;
+              case PIECES.BISHOP:
+                moves = getBishopMoves(board, row, col, piece.color);
+                break;
+              case PIECES.QUEEN:
+                moves = getQueenMoves(board, row, col, piece.color);
+                break;
+              case PIECES.KING:
+                moves = getKingMoves(board, row, col, piece.color);
+                break;
+            }
+            
+            if (checkForCheck) {
+              moves = moves.filter(move => {
+                const testBoard = simulateMove(board, row, col, move.row, move.col);
+                return !isKingInCheck(testBoard, piece.color);
+              });
+            }
+            
+            return moves;
+          };
+
+          const executeMove = (board, fromRow, fromCol, toRow, toCol, moveInfo = null) => {
+            const newBoard = board.map(row => [...row]);
+            const piece = newBoard[fromRow][fromCol];
+            const capturedPiece = newBoard[toRow][toCol];
+            
+            newBoard[toRow][toCol] = piece;
+            newBoard[fromRow][fromCol] = null;
+            
+            if (moveInfo && moveInfo.isCastling) {
+              const rookRow = toRow;
+              if (moveInfo.castlingType === 'kingside') {
+                const rook = newBoard[rookRow][7];
+                newBoard[rookRow][5] = rook;
+                newBoard[rookRow][7] = null;
+              } else if (moveInfo.castlingType === 'queenside') {
+                const rook = newBoard[rookRow][0];
+                newBoard[rookRow][3] = rook;
+                newBoard[rookRow][0] = null;
+              }
+            }
+            
+            if (piece.type === PIECES.PAWN) {
+              const promotionRow = piece.color === 'white' ? 0 : 7;
+              if (toRow === promotionRow) {
+                const promotionPiece = moveInfo?.promotionPiece || PIECES.QUEEN;
+                newBoard[toRow][toCol] = { type: promotionPiece, color: piece.color };
+              }
+            }
+            
+            const newCastlingRights = { ...castlingRights };
+            
+            if (piece.type === PIECES.KING) {
+              if (piece.color === 'white') {
+                newCastlingRights.whiteKingSide = false;
+                newCastlingRights.whiteQueenSide = false;
+              } else {
+                newCastlingRights.blackKingSide = false;
+                newCastlingRights.blackQueenSide = false;
+              }
+            }
+            
+            if (piece.type === PIECES.ROOK) {
+              if (piece.color === 'white') {
+                if (fromRow === 7 && fromCol === 0) newCastlingRights.whiteQueenSide = false;
+                if (fromRow === 7 && fromCol === 7) newCastlingRights.whiteKingSide = false;
+              } else {
+                if (fromRow === 0 && fromCol === 0) newCastlingRights.blackQueenSide = false;
+                if (fromRow === 0 && fromCol === 7) newCastlingRights.blackKingSide = false;
+              }
+            }
+            
+            return { newBoard, capturedPiece, newCastlingRights, newEnPassantTarget: null };
+          };
+
+          const getAllValidMoves = (board, color) => {
+            const moves = [];
+            
+            for (let row = 0; row < 8; row++) {
+              for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (piece && piece.color === color) {
+                  const pieceMoves = getPieceMoves(board, row, col, piece);
+                  for (const move of pieceMoves) {
+                    moves.push({
+                      fromRow: row,
+                      fromCol: col,
+                      toRow: move.row,
+                      toCol: move.col,
+                      piece,
+                      isCastling: move.isCastling,
+                      castlingType: move.castlingType
+                    });
+                  }
+                }
+              }
+            }
+            return moves;
+          };
+
+          const evaluatePosition = (board) => {
+            let score = 0;
+            
+            for (let row = 0; row < 8; row++) {
+              for (let col = 0; col < 8; col++) {
+                const piece = board[row][col];
+                if (piece) {
+                  let pieceValue = PIECE_VALUES[piece.type];
+                  
+                  if (piece.type === PIECES.PAWN) {
+                    if (piece.color === 'white') {
+                      pieceValue += (6 - row) * 10;
+                    } else {
+                      pieceValue += (row - 1) * 10;
+                    }
+                  }
+                  
+                  const centerDistance = Math.abs(3.5 - row) + Math.abs(3.5 - col);
+                  pieceValue += (7 - centerDistance) * 5;
+                  
+                  if (piece.color === 'black') {
+                    score += pieceValue;
+                  } else {
+                    score -= pieceValue;
+                  }
+                }
+              }
+            }
+            
+            if (isKingInCheck(board, 'black')) score -= 500;
+            if (isKingInCheck(board, 'white')) score += 500;
+            
+            return score;
+          };
+
+          const alphaBeta = (board, depth, alpha, beta, maximizingPlayer, color) => {
+            if (depth === 0) {
+              return { score: evaluatePosition(board), move: null };
+            }
+            
+            const moves = getAllValidMoves(board, color);
+            
+            if (moves.length === 0) {
+              if (isKingInCheck(board, color)) {
+                return { score: maximizingPlayer ? -10000 : 10000, move: null };
+              } else {
+                return { score: 0, move: null };
+              }
+            }
+            
+            let bestMove = null;
+            
+            if (maximizingPlayer) {
+              let maxEval = -Infinity;
+              for (const move of moves) {
+                const { newBoard } = executeMove(board, move.fromRow, move.fromCol, move.toRow, move.toCol, move);
+                const evaluation = alphaBeta(newBoard, depth - 1, alpha, beta, false, 'white');
+                
+                if (evaluation.score > maxEval) {
+                  maxEval = evaluation.score;
+                  bestMove = move;
+                }
+                
+                alpha = Math.max(alpha, evaluation.score);
+                if (beta <= alpha) break;
+              }
+              return { score: maxEval, move: bestMove };
+            } else {
+              let minEval = Infinity;
+              for (const move of moves) {
+                const { newBoard } = executeMove(board, move.fromRow, move.fromCol, move.toRow, move.toCol, move);
+                const evaluation = alphaBeta(newBoard, depth - 1, alpha, beta, true, 'black');
+                
+                if (evaluation.score < minEval) {
+                  minEval = evaluation.score;
+                  bestMove = move;
+                }
+                
+                beta = Math.min(beta, evaluation.score);
+                if (beta <= alpha) break;
+              }
+              return { score: minEval, move: bestMove };
+            }
+          };
+
+          const findBestMove = (board, depth) => {
+            const result = alphaBeta(board, depth, -Infinity, Infinity, true, 'black');
+            return result.move;
+          };
+
+          const checkGameEnd = (board, color) => {
+            const moves = getAllValidMoves(board, color);
+            
+            if (moves.length === 0) {
+              if (isKingInCheck(board, color)) {
+                return color === 'white' ? 'black' : 'white';
+              } else {
+                return 'draw';
+              }
+            }
+            return null;
+          };
+
+          const handleSquareClick = (row, col) => {
+            if (gameState !== 'playing' || currentPlayer !== 'white' || isAIThinking) return;
+            
+            const piece = board[row][col];
+            
+            if (selectedPiece) {
+              const validMove = validMoves.find(m => m.row === row && m.col === col);
+              
+              if (validMove) {
+                const movingPiece = board[selectedPiece.row][selectedPiece.col];
+                const isPromotion = movingPiece && movingPiece.type === PIECES.PAWN && 
+                                   movingPiece.color === 'white' && row === 0;
+                
+                if (isPromotion) {
+                  setPromotionDialog({
+                    fromRow: selectedPiece.row,
+                    fromCol: selectedPiece.col,
+                    toRow: row,
+                    toCol: col,
+                    validMove
+                  });
+                  return;
+                }
+                
+                const { newBoard, capturedPiece, newCastlingRights, newEnPassantTarget } = executeMove(
+                  board, selectedPiece.row, selectedPiece.col, row, col, validMove
+                );
+                
+                const pieceId = `${selectedPiece.row}-${selectedPiece.col}`;
+                setAnimatingPieces(prev => new Set(prev).add(pieceId));
+                
+                setBoard(newBoard);
+                setLastMove({ from: selectedPiece, to: { row, col } });
+                setCastlingRights(newCastlingRights);
+                setEnPassantTarget(newEnPassantTarget);
+                
+                if (capturedPiece) {
+                  setCapturedPieces(prev => ({
+                    ...prev,
+                    black: [...prev.black, capturedPiece]
+                  }));
+                }
+                
+                setTimeout(() => {
+                  setAnimatingPieces(prev => {
+                    const next = new Set(prev);
+                    next.delete(pieceId);
+                    return next;
+                  });
+                }, 300);
+                
+                setIsInCheck(isKingInCheck(newBoard, 'black'));
+                
+                const gameEnd = checkGameEnd(newBoard, 'black');
+                if (gameEnd) {
+                  setWinner(gameEnd);
+                  setGameState('gameOver');
+                } else {
+                  setCurrentPlayer('black');
+                }
+                
+                setSelectedPiece(null);
+                setValidMoves([]);
+              } else {
+                selectPiece(row, col, piece);
+              }
+            } else {
+              selectPiece(row, col, piece);
+            }
+          };
+
+          const selectPiece = (row, col, piece) => {
+            if (!piece || piece.color !== currentPlayer) {
+              setSelectedPiece(null);
+              setValidMoves([]);
+              return;
+            }
+            
+            const moves = getPieceMoves(board, row, col, piece);
+            setSelectedPiece({ row, col });
+            setValidMoves(moves);
+          };
+
+          const executePromotionMove = (fromRow, fromCol, toRow, toCol, moveInfo, promotionPiece) => {
+            const moveInfoWithPromotion = { ...moveInfo, promotionPiece };
+            
+            const { newBoard, capturedPiece, newCastlingRights, newEnPassantTarget } = executeMove(
+              board, fromRow, fromCol, toRow, toCol, moveInfoWithPromotion
+            );
+            
+            const pieceId = `${fromRow}-${fromCol}`;
+            setAnimatingPieces(prev => new Set(prev).add(pieceId));
+            
+            setBoard(newBoard);
+            setLastMove({ from: { row: fromRow, col: fromCol }, to: { row: toRow, col: toCol } });
+            setCastlingRights(newCastlingRights);
+            setEnPassantTarget(newEnPassantTarget);
+            
+            if (capturedPiece) {
+              setCapturedPieces(prev => ({
+                ...prev,
+                black: [...prev.black, capturedPiece]
+              }));
+            }
+            
+            setTimeout(() => {
+              setAnimatingPieces(prev => {
+                const next = new Set(prev);
+                next.delete(pieceId);
+                return next;
+              });
+            }, 300);
+            
+            setIsInCheck(isKingInCheck(newBoard, 'black'));
+            
+            const gameEnd = checkGameEnd(newBoard, 'black');
+            if (gameEnd) {
+              setWinner(gameEnd);
+              setGameState('gameOver');
+            } else {
+              setCurrentPlayer('black');
+            }
+            
+            setSelectedPiece(null);
+            setValidMoves([]);
+            setPromotionDialog(null);
+          };
+
+          useEffect(() => {
+            if (currentPlayer !== 'black' || gameState !== 'playing') return;
+
+            const makeAIMove = async () => {
+              setIsAIThinking(true);
+              setAiThoughts([]);
+
+              await new Promise(resolve => setTimeout(resolve, 500));
+
+              try {
+                setAiThoughts(prev => [...prev, {
+                  text: "Analizzando tutte le mosse possibili...",
+                  round: Math.floor(moveHistory.length / 2)
+                }]);
+
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                let searchDepth;
+                switch (difficulty) {
+                  case 'easy': searchDepth = 2; break;
+                  case 'medium': searchDepth = 4; break;
+                  case 'hard': searchDepth = 6; break;
+                  default: searchDepth = 4;
+                }
+
+                setAiThoughts(prev => [...prev, {
+                  text: `Analisi a ${searchDepth} livelli di profondità...`,
+                  round: Math.floor(moveHistory.length / 2)
+                }]);
+
+                const startTime = Date.now();
+                const bestMove = findBestMove(board, searchDepth);
+                const endTime = Date.now();
+
+                if (!bestMove) {
+                  setWinner('white');
+                  setGameState('gameOver');
+                  return;
+                }
+
+                setAiThoughts(prev => [...prev, {
+                  text: `Mossa trovata in ${(endTime - startTime) / 1000}s`,
+                  round: Math.floor(moveHistory.length / 2)
+                }]);
+
+                await new Promise(resolve => setTimeout(resolve, 300));
+
+                const { newBoard, capturedPiece, newCastlingRights, newEnPassantTarget } = executeMove(
+                  board, bestMove.fromRow, bestMove.fromCol, bestMove.toRow, bestMove.toCol, 
+                  { ...bestMove, promotionPiece: PIECES.QUEEN }
+                );
+                
+                const pieceId = `${bestMove.fromRow}-${bestMove.fromCol}`;
+                setAnimatingPieces(prev => new Set(prev).add(pieceId));
+
+                setBoard(newBoard);
+                setLastMove({ 
+                  from: { row: bestMove.fromRow, col: bestMove.fromCol }, 
+                  to: { row: bestMove.toRow, col: bestMove.toCol } 
+                });
+                setCastlingRights(newCastlingRights);
+                setEnPassantTarget(newEnPassantTarget);
+
+                if (capturedPiece) {
+                  setCapturedPieces(prev => ({
+                    ...prev,
+                    white: [...prev.white, capturedPiece]
+                  }));
+                }
+
+                setTimeout(() => {
+                  setAnimatingPieces(prev => {
+                    const next = new Set(prev);
+                    next.delete(pieceId);
+                    return next;
+                  });
+                }, 300);
+
+                setIsInCheck(isKingInCheck(newBoard, 'white'));
+
+                const gameEnd = checkGameEnd(newBoard, 'white');
+                if (gameEnd) {
+                  setWinner(gameEnd);
+                  setGameState('gameOver');
+                } else {
+                  setCurrentPlayer('white');
+                }
+              } catch (error) {
+                console.error('AI Error:', error);
+                setCurrentPlayer('white');
+              } finally {
+                setIsAIThinking(false);
+              }
+            };
+
+            makeAIMove();
+          }, [currentPlayer, gameState, board, difficulty]);
+
+          const startGame = (selectedDifficulty) => {
+            setDifficulty(selectedDifficulty);
+            setGameState('playing');
+            setBoard(initializeBoard());
+            setCurrentPlayer('white');
+            setWinner(null);
+            setAiThoughts([]);
+            setSelectedPiece(null);
+            setValidMoves([]);
+            setCapturedPieces({ white: [], black: [] });
+            setLastMove(null);
+          const startGame = (selectedDifficulty) => {
+            setDifficulty(selectedDifficulty);
+            setGameState('playing');
+            setBoard(initializeBoard());
+            setCurrentPlayer('white');
+            setWinner(null);
+            setAiThoughts([]);
+            setSelectedPiece(null);
+            setValidMoves([]);
+            setCapturedPieces({ white: [], black: [] });
+            setLastMove(null);
+            setMoveHistory([]);
+            setIsInCheck(false);
+            setEnPassantTarget(null);
+            setPromotionDialog(null);
+            setCastlingRights({
+              whiteKingSide: true,
+              whiteQueenSide: true,
+              blackKingSide: true,
+              blackQueenSide: true
+            });
+          };
+
+          const resetGame = () => {
+            setGameState('menu');
+            setBoard([]);
+            setCurrentPlayer('white');
+            setWinner(null);
+            setAiThoughts([]);
+            setSelectedPiece(null);
+            setValidMoves([]);
+            setCapturedPieces({ white: [], black: [] });
+            setLastMove(null);
+            setMoveHistory([]);
+            setIsInCheck(false);
+            setEnPassantTarget(null);
+            setPromotionDialog(null);
+            setCastlingRights({
+              whiteKingSide: true,
+              whiteQueenSide: true,
+              blackKingSide: true,
+              blackQueenSide: true
+            });
+          };
+
+          return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 relative overflow-hidden">
+              <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute -top-40 -left-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
+                <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
+                <div className="absolute -bottom-40 left-40 w-80 h-80 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse"></div>
+              </div>
+
+              {gameState === 'menu' && (
+                <div className="relative z-10 min-h-screen flex items-center justify-center">
+                  <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-12 shadow-2xl border border-white/20 max-w-md w-full">
+                    <h1 className="text-6xl font-bold text-center mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                      {t('gameTitle')}
+                    </h1>
+                    <p className="text-center text-gray-300 mb-8">{t('gameSubtitle')}</p>
+                    
+                    <div className="space-y-4">
+                      <h2 className="text-xl font-semibold text-white text-center mb-4">{t('selectDifficulty')}</h2>
+                      
+                      <button
+                        onClick={() => startGame('easy')}
+                        className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center justify-between group"
+                      >
+                        <span>{t('easy')}</span>
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                      
+                      <button
+                        onClick={() => startGame('medium')}
+                        className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center justify-between group"
+                      >
+                        <span>{t('medium')}</span>
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                      
+                      <button
+                        onClick={() => startGame('hard')}
+                        className="w-full bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center justify-between group"
+                      >
+                        <span>{t('hard')}</span>
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(gameState === 'playing' || gameState === 'gameOver') && (
+                <div className="relative z-10 min-h-screen flex items-center justify-center p-8">
+                  <div className="flex gap-8 max-w-7xl w-full">
+                    <div className="flex-1">
+                      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 shadow-2xl border border-white/20">
+                        <div className="flex items-center justify-between mb-6">
+                          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                            {t('gameTitle')}
+                          </h1>
+                          <div className="flex items-center gap-4">
+                            <div className={`px-4 py-2 rounded-full font-semibold transition-all duration-300 ${
+                              currentPlayer === 'white' 
+                                ? 'bg-gradient-to-r from-blue-200 to-white text-blue-900 shadow-lg shadow-blue-200/30' 
+                                : 'bg-white/10 text-gray-400'
+                            }`}>
+                              <User className="inline w-4 h-4 mr-2" />
+                              {t('yourTurn')}
+                            </div>
+                            <div className={`px-4 py-2 rounded-full font-semibold transition-all duration-300 ${
+                              currentPlayer === 'black' 
+                                ? 'bg-gradient-to-r from-gray-700 to-gray-900 text-white shadow-lg shadow-gray-700/30' 
+                                : 'bg-white/10 text-gray-400'
+                            }`}>
+                              <Cpu className="inline w-4 h-4 mr-2" />
+                              {t('aiTurn')}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isInCheck && (
+                          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-center font-semibold">
+                            {t('check')}
+                          </div>
+                        )}
+
+                        <div className="bg-amber-100 rounded-2xl p-4 shadow-inner">
+                          <div className="grid grid-cols-8 gap-1">
+                            {board.map((row, rowIndex) => 
+                              row.map((cell, colIndex) => {
+                                const isBlackSquare = (rowIndex + colIndex) % 2 === 1;
+                                const isSelected = selectedPiece?.row === rowIndex && selectedPiece?.col === colIndex;
+                                const isValidMove = validMoves.some(m => m.row === rowIndex && m.col === colIndex);
+                                const isLastMoveFrom = lastMove?.from.row === rowIndex && lastMove?.from.col === colIndex;
+                                const isLastMoveTo = lastMove?.to.row === rowIndex && lastMove?.to.col === colIndex;
+                                const isAnimating = animatingPieces.has(`${rowIndex}-${colIndex}`);
+                                
+                                return (
+                                  <div
+                                    key={`${rowIndex}-${colIndex}`}
+                                    className={`aspect-square relative transition-all duration-200 ${
+                                      isBlackSquare 
+                                        ? 'bg-amber-800 hover:bg-amber-700' 
+                                        : 'bg-amber-100 hover:bg-amber-200'
+                                    } ${isSelected ? 'ring-4 ring-blue-400' : ''} ${
+                                      isValidMove ? 'ring-2 ring-green-400' : ''
+                                    } ${
+                                      currentPlayer === 'white' ? 'cursor-pointer' : ''
+                                    }`}
+                                    onClick={() => handleSquareClick(rowIndex, colIndex)}
+                                  >
+                                    {isValidMove && (
+                                      <div className="absolute inset-2 bg-green-400/30 rounded-full" />
+                                    )}
+                                    
+                                    {(isLastMoveFrom || isLastMoveTo) && (
+                                      <div className="absolute inset-0 ring-4 ring-blue-400 ring-opacity-80 animate-pulse bg-blue-300/30" />
+                                    )}
+                                    
+                                    {cell && (
+                                      <div className={`absolute inset-0 flex items-center justify-center text-4xl transition-all duration-300 ${
+                                        isAnimating ? 'animate-bounce' : ''
+                                      }`}>
+                                        {PIECE_SYMBOLS[cell.color][cell.type]}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-between items-center">
+                          <div className="flex items-center gap-4">
+                            <div className="bg-white/10 rounded-lg p-3">
+                              <h3 className="text-sm font-semibold text-blue-200 mb-2">Pezzi Bianchi Catturati: {capturedPieces.white.length}</h3>
+                              <div className="flex gap-1 flex-wrap">
+                                {capturedPieces.white.map((piece, index) => (
+                                  <span key={index} className="text-lg">
+                                    {PIECE_SYMBOLS[piece.color][piece.type]}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div className="bg-white/10 rounded-lg p-3">
+                              <h3 className="text-sm font-semibold text-gray-200 mb-2">Pezzi Neri Catturati: {capturedPieces.black.length}</h3>
+                              <div className="flex gap-1 flex-wrap">
+                                {capturedPieces.black.map((piece, index) => (
+                                  <span key={index} className="text-lg">
+                                    {PIECE_SYMBOLS[piece.color][piece.type]}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {promotionDialog && (
+                          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                            <div className="bg-white/90 backdrop-blur-lg rounded-2xl p-6 shadow-2xl border border-white/20">
+                              <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">Scegli il pezzo di promozione</h3>
+                              <div className="flex gap-4">
+                                {[PIECES.QUEEN, PIECES.ROOK, PIECES.BISHOP, PIECES.KNIGHT].map(pieceType => (
+                                  <button
+                                    key={pieceType}
+                                    onClick={() => executePromotionMove(
+                                      promotionDialog.fromRow,
+                                      promotionDialog.fromCol,
+                                      promotionDialog.toRow,
+                                      promotionDialog.toCol,
+                                      promotionDialog.validMove,
+                                      pieceType
+                                    )}
+                                    className="w-16 h-16 bg-blue-500 hover:bg-blue-600 rounded-lg flex items-center justify-center text-4xl transition-all duration-200 transform hover:scale-105"
+                                  >
+                                    {PIECE_SYMBOLS.white[pieceType]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {gameState === 'gameOver' && (
+                          <div className="mt-6 text-center">
+                            <h2 className="text-3xl font-bold mb-4">
+                              {winner === 'draw' ? (
+                                <span className="text-yellow-300">{t('itsADraw')}</span>
+                              ) : winner === 'white' ? (
+                                <span className="bg-gradient-to-r from-blue-400 to-white bg-clip-text text-transparent">{t('youWin')}</span>
+                              ) : (
+                                <span className="bg-gradient-to-r from-gray-400 to-gray-600 bg-clip-text text-transparent">{t('aiWins')}</span>
+                              )}
+                            </h2>
+                            <button
+                              onClick={resetGame}
+                              className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg inline-flex items-center gap-2"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                              {t('playAgain')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="w-96">
+                      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 shadow-2xl border border-white/20 h-full">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Sparkles className="w-5 h-5 text-blue-400" />
+                          <h2 className="text-xl font-semibold text-white">{t('aiThoughts')}</h2>
+                          <span className="ml-auto text-sm text-gray-400 capitalize">{difficulty}</span>
+                        </div>
+                        
+                        <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                          {isAIThinking && (
+                            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                              <p className="text-blue-200 text-sm">{t('analyzingBoard')}</p>
+                              <div className="mt-2">
+                                <div className="w-full bg-blue-900/50 rounded-full h-2">
+                                  <div className="bg-gradient-to-r from-blue-400 to-purple-400 h-2 rounded-full animate-pulse" style={{ width: '100%' }} />
+                                </div>
+                                <p className="text-xs text-blue-300 mt-1">Analisi in corso...</p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {aiThoughts.slice().reverse().map((thought, index) => (
+                            <div
+                              key={aiThoughts.length - index - 1}
+                              className="bg-white/5 border border-white/10 rounded-lg p-3 transform transition-all duration-300"
+                              style={{
+                                opacity: index === 0 ? 1 : 0.7 - index * 0.1
+                              }}
+                            >
+                              <p className="text-gray-300 text-sm">{thought.text}</p>
+                              <p className="text-gray-500 text-xs mt-1">{t('move')} {thought.round}</p>
+                            </div>
+                          ))}
+                          
+                          {aiThoughts.length === 0 && !isAIThinking && (
+                            <p className="text-gray-500 text-center py-8">{t('aiThoughtsPlaceholder')}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        ReactDOM.render(React.createElement(Scacchi), document.getElementById('root'));
+    </script>
+</body>
+</html>
